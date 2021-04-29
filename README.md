@@ -28,3 +28,7 @@ The example.py script contains an example of the methods used to create a derive
 File 01 contains a draft implementation of a naieve approximation of the Temporal Skip Connections model used in:
 
 * Kapoor, Amol, Xue Ben, Luyang Liu, Bryan Perozzi, Matt Barnes, Martin Blais, and Shawn O’Banion. 2020. “Examining COVID-19 Forecasting Using Spatio-Temporal Graph Neural Networks.” ArXiv:2007.03113 [Cs], July. http://arxiv.org/abs/2007.03113.
+
+The second file contains a draft implementation of a 'reddit assisted' forecasting model. The goal is to hopefully improve the efficacy of the forecasting, such that investigations into the representations learned for the subreddits can provide insight into sources of COVID-19 misinformation.
+
+This model is currently working, but is using a set of random data in place of the reddit activity data. This is still being marshalled into a sparse tensor. 

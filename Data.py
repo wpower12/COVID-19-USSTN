@@ -7,13 +7,15 @@ ADJ_FN      = "data/source_data/county_adjacency2010.csv"
 MOBILITY_FN = "data/source_data/2020_US_Region_Mobility_Report.csv"
 CSV_DIR     = "data/source_data/csse_covid_19_daily_reports"
 
-X_FN      = "data/derived_data/{}/X_features.csv"
-Y_FN      = "data/derived_data/{}/Y_targets.csv"
-COO_FN    = "data/derived_data/{}/coo_list.csv" 
-FD_MAP_FN = "data/derived_data/{}/fips_date_nid_map.csv"
-CF_FN     = "data/derived_data/{}/counties_fips.csv"
+X_FN       = "data/derived_data/{}/X_features.csv"
+Y_FN       = "data/derived_data/{}/Y_targets.csv"
+COO_FN     = "data/derived_data/{}/coo_list.csv" 
+FD_MAP_FN  = "data/derived_data/{}/fips_date_nid_map.csv"
+CF_FN      = "data/derived_data/{}/counties_fips.csv"
+TRAIN_M_FN = "data/derived_data/{}/train_mask.csv"
+TEST_M_FN  = "data/derived_data/{}/test_mask.csv"
 
-### Data Loading 
+### Data Loading ###############################################################
 # The following methods simply read in the relevant 
 # derived CSV files and return approriate torch an
 # pytorch geo objects. 
@@ -28,13 +30,46 @@ def getPyTorchGeoData(label):
 		y_df = pd.read_csv(y_f)
 
 	with open(COO_FN.format(label), "r") as coo_f:
-		coo_df = pd.read_csv(coo_f)
+		coo_df = pd.read_csv(coo_f, header=None)
 
-	x_t   = torch.tensor(x_df.values)
-	y_t   = torch.tensor(y_df.values)
-	coo_t = torch.tensor(coo_df.values)
-	return Data(x=x_t, y=y_t, edge_index=coo_t)
+	with open(TRAIN_M_FN.format(label), "r") as train_m_f:
+		train_m_df = pd.read_csv(train_m_f)
 
+	with open(TEST_M_FN.format(label), "r") as test_m_f:
+		test_m_df = pd.read_csv(test_m_f)	
+
+	# idk why I need this hack, Gotta figure it out.
+	coo_df = filterOOBs(coo_df, len(x_df)-1)
+
+	# We need to reshape the coo first. this	
+	coo_t   = torch.tensor(coo_df.values, dtype=torch.long)
+	coo_t   = coo_t.reshape((2, len(coo_df.values)))
+
+	x_t     = torch.tensor(x_df.values, dtype=torch.float)
+	y_t     = torch.tensor(y_df.values, dtype=torch.float)
+	train_t = torch.tensor(train_m_df.values, dtype=torch.long)
+	test_t  = torch.tensor(test_m_df.values,  dtype=torch.long)
+	return Data(x=x_t, y=y_t, edge_index=coo_t, train_mask=train_t, test_mask=test_t)
+
+
+def filterOOBs(df, max_val):
+	df = df[df[0] < max_val]
+	df = df[df[1] < max_val]
+	return df
+
+
+def countOOBs(df, max_index):
+	count = 0
+
+	for row in df.iterrows():
+		i, j = row[1]
+
+		if i > max_index:
+			count += 1
+		if j > max_index:
+			count += 1
+
+	print("{} oobs".format(count))
 
 # Returns the map used to find a node index given a 
 # key made from the FIPS value of a county, and a 
@@ -54,10 +89,19 @@ def getCountyDF(label):
 	return c_df
 
 
-### Data Marshalling
+### Data Generation ############################################################
 # These methods operate on the source data CSV's to 
 # create specfic derived data files given a date range. 
-def generateFullDataset(start, end, window_size, dir_label, target_type='both'):
+# The created files are all meant to be simple text files, hoping
+# to skirt any system specific errors, while making it easy to 
+# recreate specific data objects quickly. 
+
+def generateFullDataset(start, 
+			end, 
+			window_size, 
+			train_split, 
+			dir_label, 
+			target_type='both'):
 	days = getDateRange(start, end)
 	fips_values       = generateFIPSList()
 	fdi_map, ifd_list = generateFIPSDateMaps(fips_values, days)
@@ -84,6 +128,13 @@ def generateFullDataset(start, end, window_size, dir_label, target_type='both'):
 	writeListToCSV(y_fn, target_list)
 	print("Y targets saved to {}".format(y_fn))
 
+	train_m, test_m = generateTrainTestMasks(days, train_split, fdi_map, fips_values)
+	print("{} entries in train/test masks".format(len(train_m)))
+	train_fn = TRAIN_M_FN.format(dir_label)
+	writeListToCSV(train_fn, train_m)
+	test_fn  = TEST_M_FN.format(dir_label)
+	writeListToCSV(test_fn, test_m)
+	print("train and test masks saved")
 
 def getDateRange(start, end):
 	START_DATE  = pd.to_datetime(start)
@@ -132,7 +183,7 @@ def generateMobilityFeatures(fdi_map):
 
 	mobility_df = pd.read_csv(MOBILITY_FN, dtype=DTYPES)
 	mobility_df = mobility_df[target_cols]
-	m_df = mobility_df[mobility_df['census_fips_code'].notna()].copy() # CHANGED HERE
+	m_df = mobility_df[mobility_df['census_fips_code'].notna()].copy()
 	m_df.fillna(0, inplace=True)
 
 	x = [[0.0 for o in range(6)] for i in range(len(fdi_map))]
@@ -213,7 +264,6 @@ def generateCOOList(date_range, fdi_map, fips_list, hist_window_size):
 					temp_count += 1
 				except KeyError:
 					key_errors += 1
-					pass
 				except Exception as e:
 					print(e)
 	print("{} adj links, {} temp links in cool list".format(adj_count, temp_count))
@@ -222,7 +272,11 @@ def generateCOOList(date_range, fdi_map, fips_list, hist_window_size):
 
 
 def generateTargetList(date_range, fdi_map, data='both'):
-	y_raw = [[0, 0] for i in range(len(fdi_map))]
+	if data == 'both':
+		y_raw = [[0, 0] for i in range(len(fdi_map))]
+	else:
+		y_raw = [0 for i in range(len(fdi_map))]
+
 	ke_count = 0
 
 	for day in date_range:
@@ -255,6 +309,32 @@ def generateTargetList(date_range, fdi_map, data='both'):
 
 	print("{} key errors building target list".format(ke_count))
 	return y_raw
+
+
+def generateTrainTestMasks(date_range, split_index, fdi_map, fips_list):
+	train_mask = [0.0 for i in range(len(fdi_map))]
+	test_mask  = [0.0 for i in range(len(fdi_map))]
+	key_errors = 0 # TODO -  God i need to figure this out.
+	for i in range(len(date_range)):
+		for fips in fips_list:
+			date_str = date_range[i].date()
+			key_str = "{}-{}".format(fips, date_str)
+
+			try:
+				idx = fdi_map[key_str]
+				if i < split_index:
+					# Training!
+					train_mask[idx] = 1.0
+				else:
+					# Testing!
+					test_mask[idx] = 1.0
+			except KeyError:
+				key_errors += 1
+			except Exception as e:
+				# Don't think ill hit this but w.e.
+				print(e)
+
+	return train_mask, test_mask
 
 
 def writeMapToCSV(fn, src_map, headers):
