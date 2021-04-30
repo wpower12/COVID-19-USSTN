@@ -9,6 +9,9 @@ from torch_geometric.nn import GCNConv
 DS_LABEL = 'test_gen'
 OUT_DIM = 1
 NODE_FEATURES = 6
+
+# This is just hardcoded now because I'm using synthetic 
+# activity data. 
 NUM_SUBREDDITS = 20000
 SUB_REP_DIM = 3
 
@@ -28,9 +31,25 @@ class MLP(torch.nn.Module):
 		h = h.tanh()
 		h = self.linear_2(h)
 		out = h.tanh()
-		# Note: this was the soruce of my tuple issue. 
-		#       used to be 'return h, out'
 		return out
+
+
+class AggregateSubreddits(torch.nn.Module):
+	def __init__(self, activity):
+		super(AggregateSubreddits, self).__init__()
+
+		self.S = activity
+		self.R = P.Parameter(torch.rand((NUM_SUBREDDITS, SUB_REP_DIM)))
+
+	def forward(self, x):
+		# Aggregate the info fromthe subreddit reps
+		# weighted by activity
+		sub_agg = torch.matmul(self.S, self.R)
+
+		# Concatenate that with x features to be the
+		# initial input to the model. 
+		h = torch.cat((x, sub_agg), 1)
+		return h
 
 
 class RedditSkip(torch.nn.Module):
@@ -42,29 +61,22 @@ class RedditSkip(torch.nn.Module):
 		self.GCN1      = GCNConv(32, 32)
 		self.GCN2      = GCNConv(32, 32)
 		self.MLP_pred  = MLP(32, 32, OUT_DIM)
-
-		self.R = P.Parameter(torch.rand((NUM_SUBREDDITS, SUB_REP_DIM)))
-		self.S = reddit_activity
+		self.AggSubs   = AggregateSubreddits(reddit_activity)
 
 	def forward(self, x, edge_index):
 
-		# Aggregate the info fromthe subreddit reps
-		# weighted by activity
-		sub_agg = torch.matmul(self.S, self.R)
-
-		# Concatenate that with x features to be the
-		# initial input to the model. 
-		h = torch.cat((x, sub_agg), 1)
-
+	
 		# Initial Embedding from this 'subreddit updated'
 		# initial representation. The rest is the same as 
 		# the other model. 
-		h = self.MLP_embed(h)
+		h = self.AggSubs(x)
+		h = self.MLP_embed(h) # We use the Embedding MLP as our 'update'
 
 		# First Hop
 		h = self.GCN1(h, edge_index)
 		h = h.relu()
 		h = F.dropout(h, p=0.5, training=self.training)
+		
 		# Second Hop
 		h = self.GCN2(h, edge_index)
 		h = h.relu()

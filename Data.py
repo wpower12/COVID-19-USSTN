@@ -6,6 +6,7 @@ from torch_geometric.data import Data
 ADJ_FN      = "data/source_data/county_adjacency2010.csv"
 MOBILITY_FN = "data/source_data/2020_US_Region_Mobility_Report.csv"
 CSV_DIR     = "data/source_data/csse_covid_19_daily_reports"
+RACT_S_FN   = "data/source_data/full_activity_data.csv"
 
 X_FN       = "data/derived_data/{}/X_features.csv"
 Y_FN       = "data/derived_data/{}/Y_targets.csv"
@@ -14,29 +15,32 @@ FD_MAP_FN  = "data/derived_data/{}/fips_date_nid_map.csv"
 CF_FN      = "data/derived_data/{}/counties_fips.csv"
 TRAIN_M_FN = "data/derived_data/{}/train_mask.csv"
 TEST_M_FN  = "data/derived_data/{}/test_mask.csv"
+SUB_MAP_FN = "data/derived_data/{}/subreddit_id_map.csv"
+RACT_D_FN  = "data/derived_data/{}/reddit_activity.csv"
 
 ### Data Loading ###############################################################
 # The following methods simply read in the relevant 
 # derived CSV files and return approriate torch an
 # pytorch geo objects. 
 
+
 # Returns the pytorch geometric Data object representing
 # the full Spatio-Temporal network of US Counties. 
 def getPyTorchGeoData(label):
 	with open(X_FN.format(label), "r") as x_f:
-		x_df = pd.read_csv(x_f)
+		x_df = pd.read_csv(x_f, header=None)
 
 	with open(Y_FN.format(label), "r") as y_f:
-		y_df = pd.read_csv(y_f)
+		y_df = pd.read_csv(y_f, header=None)
 
 	with open(COO_FN.format(label), "r") as coo_f:
 		coo_df = pd.read_csv(coo_f, header=None)
 
 	with open(TRAIN_M_FN.format(label), "r") as train_m_f:
-		train_m_df = pd.read_csv(train_m_f)
+		train_m_df = pd.read_csv(train_m_f, header=None)
 
 	with open(TEST_M_FN.format(label), "r") as test_m_f:
-		test_m_df = pd.read_csv(test_m_f)	
+		test_m_df = pd.read_csv(test_m_f, header=None)	
 
 	# idk why I need this hack, Gotta figure it out.
 	coo_df = filterOOBs(coo_df, len(x_df)-1)
@@ -52,6 +56,31 @@ def getPyTorchGeoData(label):
 	return Data(x=x_t, y=y_t, edge_index=coo_t, train_mask=train_t, test_mask=test_t)
 
 
+def getRedditData(label, num_cds):
+	with open(SUB_MAP_FN.format(label), "r") as sm_f:
+		sub_map_df = pd.read_csv(sm_f)
+
+	with open(RACT_D_FN.format(label), "r") as ract_f:
+		ract_df = pd.read_csv(ract_f)
+
+	cd_nids, sub_nids, vals = [], [], []
+	for row in ract_df.iterrows():
+		cd_nids.append(row[1][0])
+		sub_nids.append(row[1][1])
+		vals.append(row[1][2])
+
+	num_subs = len(sub_map_df)
+	shape = (num_cds, num_subs)
+
+	# print(cd_nids)
+
+	activity_tensor = torch.sparse_coo_tensor([cd_nids, sub_nids], vals, shape, dtype=torch.float)
+
+	sub_map = dict(zip(sub_map_df['sub_reddit_id'], sub_map_df['sub_idx']))
+
+	return sub_map, activity_tensor
+
+
 def filterOOBs(df, max_val):
 	df = df[df[0] < max_val]
 	df = df[df[1] < max_val]
@@ -60,7 +89,6 @@ def filterOOBs(df, max_val):
 
 def countOOBs(df, max_index):
 	count = 0
-
 	for row in df.iterrows():
 		i, j = row[1]
 
@@ -76,8 +104,10 @@ def countOOBs(df, max_index):
 # 'standard' date string. 
 def getFipsDateMap(label):
 	with open(FD_MAP_FN.format(label), "r") as fdm_f:
-		x_df = pd.read_csv(fdm_f)
-	return x_df.to_dict()
+		fd_df = pd.read_csv(fdm_f)
+
+	print(fd_df.columns)
+	return dict(zip(fd_df['fdkey'], fd_df['node_id']))
 
 
 # Returns a dataframe containing summary information about
@@ -96,12 +126,8 @@ def getCountyDF(label):
 # to skirt any system specific errors, while making it easy to 
 # recreate specific data objects quickly. 
 
-def generateFullDataset(start, 
-			end, 
-			window_size, 
-			train_split, 
-			dir_label, 
-			target_type='both'):
+
+def generateFullDataset(start, end, window_size, train_split, dir_label, target_type='both'):
 	days = getDateRange(start, end)
 	fips_values       = generateFIPSList()
 	fdi_map, ifd_list = generateFIPSDateMaps(fips_values, days)
@@ -110,31 +136,44 @@ def generateFullDataset(start,
 	writeMapToCSV(fdi_save_fn, fdi_map, ['fdkey', 'node_id'])
 	print("fipsdate -> node index map saved to {}".format(fdi_save_fn))
 
-	mob_features = generateMobilityFeatures(fdi_map)
-	print("{} entries in mob_features list".format(len(mob_features)))
-	x_fn = X_FN.format(dir_label)
-	writeListToCSV(x_fn, mob_features)
-	print("X features saved to {}".format(x_fn))
+	# mob_features = generateMobilityFeatures(fdi_map)
+	# print("{} entries in mob_features list".format(len(mob_features)))
+	# x_fn = X_FN.format(dir_label)
+	# writeListToCSV(x_fn, mob_features)
+	# print("X features saved to {}".format(x_fn))
 
-	coo_list     = generateCOOList(days, fdi_map, fips_values, window_size)
-	print("{} edges in coo list".format(len(coo_list)))
-	coo_fn = COO_FN.format(dir_label)
-	writeListToCSV(coo_fn, coo_list)
-	print("COO Edge List saved to {}".format(coo_fn))
+	# coo_list     = generateCOOList(days, fdi_map, fips_values, window_size)
+	# print("{} edges in coo list".format(len(coo_list)))
+	# coo_fn = COO_FN.format(dir_label)
+	# writeListToCSV(coo_fn, coo_list)
+	# print("COO Edge List saved to {}".format(coo_fn))
 
-	target_list  = generateTargetList(days, fdi_map, data=target_type)
-	print("{} entries in target_list".format(len(target_list)))
-	y_fn = Y_FN.format(dir_label)
-	writeListToCSV(y_fn, target_list)
-	print("Y targets saved to {}".format(y_fn))
+	# target_list  = generateTargetList(days, fdi_map, data=target_type)
+	# print("{} entries in target_list".format(len(target_list)))
+	# y_fn = Y_FN.format(dir_label)
+	# writeListToCSV(y_fn, target_list)
+	# print("Y targets saved to {}".format(y_fn))
 
-	train_m, test_m = generateTrainTestMasks(days, train_split, fdi_map, fips_values)
-	print("{} entries in train/test masks".format(len(train_m)))
-	train_fn = TRAIN_M_FN.format(dir_label)
-	writeListToCSV(train_fn, train_m)
-	test_fn  = TEST_M_FN.format(dir_label)
-	writeListToCSV(test_fn, test_m)
-	print("train and test masks saved")
+	# train_m, test_m = generateTrainTestMasks(days, train_split, fdi_map, fips_values)
+	# print("{} entries in train/test masks".format(len(train_m)))
+	# train_fn = TRAIN_M_FN.format(dir_label)
+	# writeListToCSV(train_fn, train_m)
+	# test_fn  = TEST_M_FN.format(dir_label)
+	# writeListToCSV(test_fn, test_m)
+	# print("train and test masks saved")
+
+	subid2idx, idx2subid = generateSubIdMaps(days)
+	print("generated subreddit maps, {} subreddits in dataset".format(len(subid2idx)))
+	submap_fn = SUB_MAP_FN.format(dir_label)
+	writeMapToCSV(submap_fn, subid2idx, ['sub_reddit_id', 'sub_idx'])
+	print("saved subreddit map to {}".format(submap_fn))
+
+	activity_edges = generateActivityData(days, subid2idx, fdi_map)
+	print("generated activity edges, {} total".format(len(activity_edges)))
+	ract_fn = RACT_D_FN.format(dir_label)
+	writeListToCSV(ract_fn, activity_edges)
+	print("activity edges saved to {}".format(ract_fn))
+
 
 def getDateRange(start, end):
 	START_DATE  = pd.to_datetime(start)
@@ -337,6 +376,56 @@ def generateTrainTestMasks(date_range, split_index, fdi_map, fips_list):
 	return train_mask, test_mask
 
 
+def generateSubIdMaps(date_range):
+	# Make maps SubId -> Idx and Idx -> SubId
+	# Only consider subs with activity in the date range?
+	day_nums = [d.dayofyear for d in date_range] # Awesome. 
+	ract_df  = pd.read_csv(RACT_S_FN)
+	ract_df = ract_df[ract_df['day'].isin(day_nums)]
+
+
+	sub_set = set([])
+	for row in ract_df.iterrows():
+		sub_id = row[1]['subreddit_id']
+		sub_set = sub_set.union([sub_id])
+
+	subid2idx = dict()
+	idx2subid = []
+
+	for idx, sub_id in enumerate(sub_set):
+		subid2idx[sub_id] = idx
+		idx2subid.append(sub_id)
+
+	return subid2idx, idx2subid
+
+
+def generateActivityData(date_range, subid2idx, fdi_map):
+	day_num_map = {d.dayofyear: d.date() for d in date_range}
+	ract_df = pd.read_csv(RACT_S_FN)
+	raw_data = []
+
+	for row in ract_df.iterrows():
+		# We're adding edges to a list. so we have a (i, j, v)
+		# where 
+		#   i is a CountyDateNode Index
+		#   j is a Subreddit Index?
+		#   v is the activity value (count)
+		fips = row[1]['fips']
+		day_num = int(row[1]['day']) 
+		sub_id  = row[1]['subreddit_id']
+		act_val = row[1]['activeusers']
+		
+		if day_num in day_num_map:
+			cd_key = "{}-{}".format(fips, day_num_map[day_num])
+
+			if cd_key in fdi_map and sub_id in subid2idx:
+				cd_idx = fdi_map[cd_key]
+				sub_idx = subid2idx[sub_id]
+				raw_data.append([cd_idx, sub_idx, act_val])
+
+	return raw_data
+
+
 def writeMapToCSV(fn, src_map, headers):
 	# First we handle the creation/existence of the label dir.
 	pathlib.Path(fn).parent.mkdir(exist_ok=True)
@@ -344,7 +433,7 @@ def writeMapToCSV(fn, src_map, headers):
 	# doing this manually bc i cant get pandas to do it right?
 	# i mean its def me but lets just say its the panda.
 	with open(fn, 'w') as f:
-		f.write("{}\n".format(", ".join(headers)))
+		f.write("{}\n".format(",".join(headers)))
 		for key in src_map:
 			val = src_map[key]
 			f.write("{}, {}\n".format(key, val))
