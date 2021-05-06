@@ -5,7 +5,8 @@ from torch_geometric.data import Data
 
 ADJ_FN      = "data/source_data/county_adjacency2010.csv"
 MOBILITY_FN = "data/source_data/2020_US_Region_Mobility_Report.csv"
-CSV_DIR     = "data/source_data/csse_covid_19_daily_reports"
+Y_CONF_FN   = "data/source_data/targets_confirmed.csv"
+Y_DEATHS_FN = "data/source_data/targets_deaths.csv"
 RACT_S_FN   = "data/source_data/full_activity_data.csv"
 
 X_FN       = "data/derived_data/{}/X_features.csv"
@@ -17,10 +18,6 @@ TRAIN_M_FN = "data/derived_data/{}/train_mask.csv"
 TEST_M_FN  = "data/derived_data/{}/test_mask.csv"
 SUB_MAP_FN = "data/derived_data/{}/subreddit_id_map.csv"
 RACT_D_FN  = "data/derived_data/{}/reddit_activity.csv"
-
-
-Y_DEBUG_1 = "data/derived_data/{}/y_targets_pre_clean.csv"
-Y_DEBUG_2 = "data/derived_data/{}/y_targets_pre_deltas.csv"
 
 ### Data Loading ###############################################################
 # The following methods simply read in the relevant 
@@ -136,54 +133,47 @@ def generateFullDataset(start, end, window_size, train_split, dir_label, target_
 	fips_values       = generateFIPSList()
 	fdi_map, ifd_list = generateFIPSDateMaps(fips_values, days)
 
-	# fdi_save_fn = FD_MAP_FN.format(dir_label)
-	# writeMapToCSV(fdi_save_fn, fdi_map, ['fdkey', 'node_id'])
-	# print("fipsdate -> node index map saved to {}".format(fdi_save_fn))
+	fdi_save_fn = FD_MAP_FN.format(dir_label)
+	writeMapToCSV(fdi_save_fn, fdi_map, ['fdkey', 'node_id'])
+	print("fipsdate -> node index map saved to {}".format(fdi_save_fn))
 
-	# mob_features = generateMobilityFeatures(fdi_map)
-	# print("{} entries in mob_features list".format(len(mob_features)))
-	# x_fn = X_FN.format(dir_label)
-	# writeListToCSV(x_fn, mob_features)
-	# print("X features saved to {}".format(x_fn))
+	mob_features = generateMobilityFeatures(fdi_map)
+	print("{} entries in mob_features list".format(len(mob_features)))
+	x_fn = X_FN.format(dir_label)
+	writeListToCSV(x_fn, mob_features)
+	print("X features saved to {}".format(x_fn))
 
-	# coo_list     = generateCOOList(days, fdi_map, fips_values, window_size)
-	# print("{} edges in coo list".format(len(coo_list)))
-	# coo_fn = COO_FN.format(dir_label)
-	# writeListToCSV(coo_fn, coo_list)
-	# print("COO Edge List saved to {}".format(coo_fn))
+	coo_list     = generateCOOList(days, fdi_map, fips_values, window_size)
+	print("{} edges in coo list".format(len(coo_list)))
+	coo_fn = COO_FN.format(dir_label)
+	writeListToCSV(coo_fn, coo_list)
+	print("COO Edge List saved to {}".format(coo_fn))
 
-	target_list = generateTargetList(days, fdi_map, data=target_type)
-	writeListToCSV(Y_DEBUG_1.format(dir_label), target_list)
-
-	target_list = cleanTargetList(days, fdi_map, fips_values, target_list, data=target_type)	
-	writeListToCSV(Y_DEBUG_2.format(dir_label), target_list)
-
-	target_list = targetsToDeltas(days, fdi_map, fips_values, target_list, data=target_type)
-	
+	target_list = generateTargetList(days, fdi_map, data=target_type)	
 	print("{} entries in target_list".format(len(target_list)))
 	y_fn = Y_FN.format(dir_label)
 	writeListToCSV(y_fn, target_list)
 	print("Y targets saved to {}".format(y_fn))
 
-	# train_m, test_m = generateTrainTestMasks(days, train_split, fdi_map, fips_values)
-	# print("{} entries in train/test masks".format(len(train_m)))
-	# train_fn = TRAIN_M_FN.format(dir_label)
-	# writeListToCSV(train_fn, train_m)
-	# test_fn  = TEST_M_FN.format(dir_label)
-	# writeListToCSV(test_fn, test_m)
-	# print("train and test masks saved")
+	train_m, test_m = generateTrainTestMasks(days, train_split, fdi_map, fips_values)
+	print("{} entries in train/test masks".format(len(train_m)))
+	train_fn = TRAIN_M_FN.format(dir_label)
+	writeListToCSV(train_fn, train_m)
+	test_fn  = TEST_M_FN.format(dir_label)
+	writeListToCSV(test_fn, test_m)
+	print("train and test masks saved")
 
-	# subid2idx, idx2subid = generateSubIdMaps(days)
-	# print("generated subreddit maps, {} subreddits in dataset".format(len(subid2idx)))
-	# submap_fn = SUB_MAP_FN.format(dir_label)
-	# writeMapToCSV(submap_fn, subid2idx, ['sub_reddit_id', 'sub_idx'])
-	# print("saved subreddit map to {}".format(submap_fn))
+	subid2idx, idx2subid = generateSubIdMaps(days)
+	print("generated subreddit maps, {} subreddits in dataset".format(len(subid2idx)))
+	submap_fn = SUB_MAP_FN.format(dir_label)
+	writeMapToCSV(submap_fn, subid2idx, ['sub_reddit_id', 'sub_idx'])
+	print("saved subreddit map to {}".format(submap_fn))
 
-	# activity_edges = generateActivityData(days, subid2idx, fdi_map)
-	# print("generated activity edges, {} total".format(len(activity_edges)))
-	# ract_fn = RACT_D_FN.format(dir_label)
-	# writeListToCSV(ract_fn, activity_edges)
-	# print("activity edges saved to {}".format(ract_fn))
+	activity_edges = generateActivityData(days, subid2idx, fdi_map)
+	print("generated activity edges, {} total".format(len(activity_edges)))
+	ract_fn = RACT_D_FN.format(dir_label)
+	writeListToCSV(ract_fn, activity_edges)
+	print("activity edges saved to {}".format(ract_fn))
 
 
 def getDateRange(start, end):
@@ -322,140 +312,30 @@ def generateCOOList(date_range, fdi_map, fips_list, hist_window_size):
 	return coo_list
 
 
-def generateTargetList(date_range, fdi_map, data='both'):
-	if data == 'both':
-		y_raw = [[0, 0] for i in range(len(fdi_map))]
-	else:
-		y_raw = [0 for i in range(len(fdi_map))]
+def generateTargetList(date_range, fdi_map, data='confirmed'):
+	# To stay simple, just gonna assume i'll only
+	# call on confirmed. will fix later. 
 
+	y_raw = [0 for i in range(len(fdi_map))]
+	conf_df = pd.read_csv(Y_CONF_FN, dtype={'fips': 'str'})
 	ke_count = 0
-	csv_rows_written = 0
-	for day in date_range:
-		csv_fn = "{:0>2}-{:0>2}-{}.csv".format(day.month, day.day, day.year)
-		day_df = pd.read_csv("{}/{}".format(CSV_DIR, csv_fn), dtype={'FIPS': 'str'})
-		day_df = day_df[day_df['FIPS'].notna()]
-		day_df = day_df[day_df['FIPS'].str.len() == 5]
 
-		# Should now have a county-only dataframe.
-		for c_row in day_df.iterrows():
-			c_raw = c_row[1]
-			fips  = c_raw[0]
+	for row in conf_df.iterrows():
+		record = row[1]
+		fips = record['fips']
+		for d in date_range:
+			key_str = "{}".format(d.date())
+			conf_count = record[key_str]
 
-			n_confirmed = c_raw[7] # TODO - Double check these!!!
-			n_dead      = c_raw[8]
-			key_str  = "{}-{}".format(fips, day.date())
-
-			try:
-				node_idx = fdi_map[key_str]
-
-				if data == 'confirmed':
-					y_raw[node_idx] = n_confirmed
-				elif data == 'deaths':
-					y_raw[node_idx] = n_dead
-				else:
-					y_raw[node_idx] = [n_confirmed, n_dead]	
-				csv_rows_written += 1
-
-			except KeyError:
+			key_str = "{}-{}".format(fips, d.date())
+			if key_str in fdi_map:
+				n_idx   = fdi_map[key_str]
+				y_raw[n_idx] = conf_count
+			else:
 				ke_count += 1
 
-	print("{} key errors building target list".format(ke_count))
-	print("{} csv rows written to targets.".format(csv_rows_written))
+	print("{} ke_counts in target gen.".format(ke_count))
 	return y_raw
-
-
-def cleanTargetList(date_range, fdi_map, fips_list, target_list, data):
-	fixed = 0
-	for fips in fips_list:
-		try:
-			key_str = "{}-{}".format(fips, date_range[0].date())
-			node_idx   = fdi_map[key_str]
-			initial_val = target_list[node_idx]
-		except:
-			print('error in initial value')
-			if data == 'both':
-				initial_val = [0,0]
-			else:
-				initial_val = 0
-
-		current_value = initial_val
-	
-		for day in date_range:
-			key_str = "{}-{}".format(fips, day.date())
-
-			try:
-				node_idx   = fdi_map[key_str]
-				next_value = target_list[node_idx]
-				# This feels gross. 
-				if data == 'both':
-					if next_value == [0, 0]:
-						target_list[node_idx] = current_value
-						fixed += 1
-					else:
-						current_value = next_value
-				else:
-					if next_value == 0:
-						target_list[node_idx] = current_value
-						fixed += 1 
-					else:
-						current_value = next_value
-
-			except:
-				print("the fuck.")
-				pass
-
-	print("{} entries cleaned in target list.".format(fixed))
-	return target_list
-
-
-def targetsToDeltas(date_range, fdi_map, fips_list, target_list, data):
-
-	if data == 'both':
-		new_raw = [[0, 0] for i in range(len(fdi_map))]
-	else:
-		new_raw = [0 for i in range(len(fdi_map))]
-
-	fixed = 0
-	for fips in fips_list:
- 
-		try:
-			key_str = "{}-{}".format(fips, date_range[0].date())
-			node_idx   = fdi_map[key_str]
-			initial_val = target_list[node_idx]
-		except:
-			print('error in initial value')
-			if data == 'both':
-				initial_val = [0,0]
-			else:
-				initial_val = 0
-
-		last_value = initial_val
-
-		for day in date_range:
-			key_str = "{}-{}".format(fips, day.date())
-			try:
-				node_idx   = fdi_map[key_str]
-				next_value = target_list[node_idx]
-
-				# This feels gross. 
-				if data == 'both':
-					new_val[0] = next_value[0]-last_value[0]
-					new_val[1] = next_value[1]-last_value[1]
-				else:
-					new_val = next_value-last_value	
-
-				new_raw[node_idx] = new_val
-
-				# And we 'udpate' the last value
-				last_value = next_value # from the original list. 
-			except:
-				print("oh hey")
-				pass
-
-	return new_raw
-
-				
-	print("{} entries cleaned in target list.".format(fixed))
 
 
 def generateTrainTestMasks(date_range, split_index, fdi_map, fips_list):
@@ -556,3 +436,4 @@ def writeListToCSV(fn, src_list):
 	with open(fn, 'w') as f:
 		for l in src_list:
 			f.write("{}\n".format(l))
+			
