@@ -3,14 +3,19 @@ import pandas as pd
 import torch
 from torch_geometric.data import Data
 
-ADJ_FN      = "data/source_data/county_adjacency2010.csv"
-MOBILITY_FN = "data/source_data/2020_US_Region_Mobility_Report.csv"
-Y_CONF_FN   = "data/source_data/targets_confirmed.csv"
-Y_DEATHS_FN = "data/source_data/targets_deaths.csv"
-RACT_S_FN   = "data/source_data/full_activity_data.csv"
+ADJ_FN       = "data/source_data/county_adjacency2010.csv"
+MOBILITY_FN  = "data/source_data/2020_US_Region_Mobility_Report.csv"
+Y_CONF_FN    = "data/source_data/targets_confirmed.csv"
+DY_CONF_FN   = "data/source_data/targets_deltas_confirmed.csv"
+Y_DEATHS_FN  = "data/source_data/targets_deaths.csv"
+DY_DEATHS_FN = "data/source_data/targets_deltas_deaths.csv"
+RACT_S_FN    = "data/source_data/full_activity_data.csv"
+
+STATIC_FEATURES_FN = "data/source_data/static_features_by_fips.csv"
 
 X_FN       = "data/derived_data/{}/X_features.csv"
 Y_FN       = "data/derived_data/{}/Y_targets.csv"
+Y_P_FN     = "data/derived_data/{}/Y_prior_targets.csv"
 COO_FN     = "data/derived_data/{}/coo_list.csv" 
 FD_MAP_FN  = "data/derived_data/{}/fips_date_nid_map.csv"
 CF_FN      = "data/derived_data/{}/counties_fips.csv"
@@ -34,6 +39,12 @@ def getPyTorchGeoData(label):
 	with open(Y_FN.format(label), "r") as y_f:
 		y_df = pd.read_csv(y_f, header=None)
 
+	with open(Y_P_FN.format(label), "r") as y_p_f:
+		y_p_df = pd.read_csv(y_p_f, header=None)
+		y_p_df.fillna(0, inplace=True)
+
+
+
 	with open(COO_FN.format(label), "r") as coo_f:
 		coo_df = pd.read_csv(coo_f, header=None)
 
@@ -44,7 +55,7 @@ def getPyTorchGeoData(label):
 		test_m_df = pd.read_csv(test_m_f, header=None)	
 
 	# idk why I need this hack, Gotta figure it out.
-	coo_df = filterOOBs(coo_df, len(x_df)-1)
+	# coo_df = filterOOBs(coo_df, len(x_df)-1)
 
 	# We need to reshape the coo first. this	
 	coo_t   = torch.tensor(coo_df.values, dtype=torch.long)
@@ -52,9 +63,10 @@ def getPyTorchGeoData(label):
 
 	x_t     = torch.tensor(x_df.values, dtype=torch.float)
 	y_t     = torch.tensor(y_df.values, dtype=torch.float)
+	y_p_t   = torch.tensor(y_p_df.values, dtype=torch.float)
 	train_t = torch.tensor(train_m_df.values, dtype=torch.long)
 	test_t  = torch.tensor(test_m_df.values,  dtype=torch.long)
-	return Data(x=x_t, y=y_t, edge_index=coo_t, train_mask=train_t, test_mask=test_t)
+	return Data(x=x_t, y=y_t, edge_index=coo_t, train_mask=train_t, test_mask=test_t, priors=y_p_t)
 
 
 def getRedditData(label, num_cds):
@@ -137,23 +149,27 @@ def generateFullDataset(start, end, window_size, train_split, dir_label, target_
 	writeMapToCSV(fdi_save_fn, fdi_map, ['fdkey', 'node_id'])
 	print("fipsdate -> node index map saved to {}".format(fdi_save_fn))
 
-	mob_features = generateMobilityFeatures(fdi_map)
-	print("{} entries in mob_features list".format(len(mob_features)))
-	x_fn = X_FN.format(dir_label)
-	writeListToCSV(x_fn, mob_features)
-	print("X features saved to {}".format(x_fn))
-
-	coo_list     = generateCOOList(days, fdi_map, fips_values, window_size)
-	print("{} edges in coo list".format(len(coo_list)))
-	coo_fn = COO_FN.format(dir_label)
-	writeListToCSV(coo_fn, coo_list)
-	print("COO Edge List saved to {}".format(coo_fn))
-
-	target_list = generateTargetList(days, fdi_map, data=target_type)	
+	target_list, prior_list = generateTargetList(days, fdi_map, data=target_type)	
 	print("{} entries in target_list".format(len(target_list)))
 	y_fn = Y_FN.format(dir_label)
 	writeListToCSV(y_fn, target_list)
 	print("Y targets saved to {}".format(y_fn))
+	y_prior_fn = Y_P_FN.format(dir_label)
+	writeListToCSV(y_prior_fn, prior_list)
+	print("Y priors saved to {}".format(y_prior_fn))
+
+	features = generateFullFeatures(fdi_map, days, window_size, target_list)
+	# mob_features = generateMobilityFeatures(fdi_map)
+	print("{} entries in features list".format(len(features)))
+	x_fn = X_FN.format(dir_label)
+	writeListToCSV(x_fn, features)
+	print("X features saved to {}".format(x_fn))
+
+	coo_list = generateCOOList(days, fdi_map, fips_values, window_size)
+	print("{} edges in coo list".format(len(coo_list)))
+	coo_fn = COO_FN.format(dir_label)
+	writeListToCSV(coo_fn, coo_list)
+	print("COO Edge List saved to {}".format(coo_fn))
 
 	train_m, test_m = generateTrainTestMasks(days, train_split, fdi_map, fips_values)
 	print("{} entries in train/test masks".format(len(train_m)))
@@ -206,6 +222,63 @@ def generateFIPSDateMaps(fips_list, date_range):
 			curr_idx += 1
 
 	return fdi_dict, ifd_list
+
+
+def generateFullFeatures(fdi_map, date_range, horizon, targets):
+	print('targets:')
+	# print(targets)
+
+	a_day = pd.Timedelta(value=1, unit='D')
+
+	# We need to iterate over the fips/date range, and then do two 
+	# things. First, append the static feautres for that fips to a 
+	# new raw_row. Then, find the temporal windows by looking into
+	# the targets 
+
+	# Maybe we do the targets FIRST, so we can pass them in to
+	# this method. Then we can just calculate new fipsdate keys 
+	# and insert as needed. 
+	static_df = pd.read_csv(STATIC_FEATURES_FN, dtype={'fips': 'str'})
+	NUM_FEATURES = len(static_df.columns)-1+horizon	
+
+	# Initial empty feature 'tensor'
+	raw_features = [[0 for i in range(NUM_FEATURES)] for cd in range(len(fdi_map))]
+	fips_list = generateFIPSList()
+	for fips in fips_list:
+		static_features = static_df[static_df['fips'] == fips]
+		# TODO - Remove this hardcoded logic. 
+		
+		if len(static_features) == 0:
+			continue
+
+		static_features = list(static_features.values[0][1:35])
+		# print(static_features)
+		for day in date_range:
+			idx_key = "{}-{}".format(fips, day.date())
+			cd_idx = fdi_map[idx_key]
+			
+			raw_row = [0 for i in range(NUM_FEATURES)]
+			i = 0
+			for s in static_features:
+				raw_row[i] = s
+				i += 1
+
+			# Now we append the prior days values.
+			prior_day = day
+			while i < horizon:
+				prior_day = prior_day-a_day
+				idx_key = "{}-{}".format(fips, prior_day.date())
+
+				if idx_key in fdi_map:
+					prior_idx = fdi_map[idx_key]
+					if targets[prior_idx] != None:
+						raw_row[i] = targets[prior_idx]
+
+				i += 1
+					
+			raw_features[cd_idx] = raw_row
+
+	return raw_features
 
 
 def generateMobilityFeatures(fdi_map):
@@ -317,25 +390,37 @@ def generateTargetList(date_range, fdi_map, data='confirmed'):
 	# call on confirmed. will fix later. 
 
 	y_raw = [0 for i in range(len(fdi_map))]
+	y_prior_raw = [0 for i in range(len(fdi_map))]
 	conf_df = pd.read_csv(Y_CONF_FN, dtype={'fips': 'str'})
 	ke_count = 0
+	a_day = pd.Timedelta(value=1, unit='D')
 
 	for row in conf_df.iterrows():
 		record = row[1]
 		fips = record['fips']
 		for d in date_range:
 			key_str = "{}".format(d.date())
+			
 			conf_count = record[key_str]
+			if conf_count == None:
+				continue
 
 			key_str = "{}-{}".format(fips, d.date())
 			if key_str in fdi_map:
 				n_idx   = fdi_map[key_str]
 				y_raw[n_idx] = conf_count
+
+				# Fill in 'prior day y'
+				key_str_prior = "{}".format((d-a_day).date())
+				if key_str_prior in record:
+					prior_count = record[key_str_prior]
+					y_prior_raw[n_idx] = prior_count
+
 			else:
 				ke_count += 1
 
 	print("{} ke_counts in target gen.".format(ke_count))
-	return y_raw
+	return y_raw, y_prior_raw
 
 
 def generateTrainTestMasks(date_range, split_index, fdi_map, fips_list):
@@ -430,10 +515,10 @@ def writeMapToCSV(fn, src_map, headers):
 def writeListToCSV(fn, src_list):
 	pathlib.Path(fn).parent.mkdir(exist_ok=True)
 
-	# save_df = pd.DataFrame(src_list)
-	# save_df.to_csv(fn, header=False, index=False)
+	save_df = pd.DataFrame(src_list)
+	save_df.to_csv(fn, header=False, index=False)
 	
-	with open(fn, 'w') as f:
-		for l in src_list:
-			f.write("{}\n".format(l))
+	# with open(fn, 'w') as f:
+	# 	for l in src_list:
+	# 		f.write("{}\n".format(l))
 			
