@@ -10,7 +10,7 @@ from torch_geometric.nn import GCNConv
 
 DS_LABEL = 'w7_200_64_full'
 RES_DIR  = "results/{}".format(DS_LABEL)
-NUM_EPOCHS = 500
+NUM_EPOCHS = 1000
 LEARNING_RATE = 0.001
 WEIGHT_DECAY  = 1e-5
 REPORT_EVERY = 5
@@ -131,12 +131,13 @@ class RedditSkip(torch.nn.Module):
 	def __init__(self, reddit_activity):
 		super(RedditSkip, self).__init__()
 
+		self.AggSubs   = AggregateSubreddits(reddit_activity)
+		
 		# I think? these are values similar to what the paper uses.
 		self.MLP_embed = MLP(32, NODE_FEATURES+SUB_REP_DIM, 16)
 		self.GCN1      = GCNConv(16, 16)
 		self.GCN2      = GCNConv(16, 16)
 		self.MLP_pred  = MLP(8, 16, OUT_DIM)
-		self.AggSubs   = AggregateSubreddits(reddit_activity)
 
 	def forward(self, x, edge_index, priors):
 
@@ -192,7 +193,7 @@ print("rs - training for {} epochs".format(NUM_EPOCHS))
 for epoch in range(1, NUM_EPOCHS):
 	loss = rs_train()
 	rs_log.addValue(loss)
-	if epoch % REP_EVERY == 0:
+	if epoch % REPORT_EVERY == 0:
 		print("rs - epoch {} - {}".format(epoch, loss))
 
 test_acc = rs_test()
