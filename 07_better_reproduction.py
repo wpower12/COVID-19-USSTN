@@ -9,10 +9,10 @@ from torch_geometric.nn import GCNConv
 
 DS_LABEL = 'w7_copy'
 RES_DIR  = "results/{}".format(DS_LABEL)
-NUM_EPOCHS = 10000
+NUM_EPOCHS = 1000000
 LEARNING_RATE = 1e-5
 WEIGHT_DECAY  = 5e-4
-REPORT_EVERY = 50
+REPORT_EVERY = 500
 OUT_DIM = 1
 NODE_FEATURES = 42
 SUB_REP_DIM = 3
