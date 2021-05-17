@@ -1,6 +1,7 @@
 import pathlib
 import pandas as pd
 import torch
+import Utils as U
 from torch_geometric.data import Data
 
 ADJ_FN       = "data/source_data/county_adjacency2010.csv"
@@ -43,8 +44,6 @@ def getPyTorchGeoData(label):
 		y_p_df = pd.read_csv(y_p_f, header=None)
 		y_p_df.fillna(0, inplace=True)
 
-
-
 	with open(COO_FN.format(label), "r") as coo_f:
 		coo_df = pd.read_csv(coo_f, header=None)
 
@@ -54,16 +53,16 @@ def getPyTorchGeoData(label):
 	with open(TEST_M_FN.format(label), "r") as test_m_f:
 		test_m_df = pd.read_csv(test_m_f, header=None)	
 
-	# idk why I need this hack, Gotta figure it out.
-	# coo_df = filterOOBs(coo_df, len(x_df)-1)
-
-	# We need to reshape the coo first. this	
+	# COO Edge List Tensor. Reshaped. 
 	coo_t   = torch.tensor(coo_df.values, dtype=torch.long)
 	coo_t   = coo_t.reshape((2, len(coo_df.values)))
 
+	# Features and Target Tensors.
 	x_t     = torch.tensor(x_df.values, dtype=torch.float)
 	y_t     = torch.tensor(y_df.values, dtype=torch.float)
 	y_p_t   = torch.tensor(y_p_df.values, dtype=torch.float)
+
+	# Test/Train Mask Tensors.
 	train_t = torch.tensor(train_m_df.values, dtype=torch.long)
 	test_t  = torch.tensor(test_m_df.values,  dtype=torch.long)
 	return Data(x=x_t, y=y_t, edge_index=coo_t, train_mask=train_t, test_mask=test_t, priors=y_p_t)
@@ -85,32 +84,12 @@ def getRedditData(label, num_cds):
 	num_subs = len(sub_map_df)
 	shape = (num_cds, num_subs)
 
-	# print(cd_nids)
-
 	activity_tensor = torch.sparse_coo_tensor([cd_nids, sub_nids], vals, shape, dtype=torch.float)
 
 	sub_map = dict(zip(sub_map_df['sub_reddit_id'], sub_map_df['sub_idx']))
 
 	return sub_map, activity_tensor
 
-
-def filterOOBs(df, max_val):
-	df = df[df[0] < max_val]
-	df = df[df[1] < max_val]
-	return df
-
-
-def countOOBs(df, max_index):
-	count = 0
-	for row in df.iterrows():
-		i, j = row[1]
-
-		if i > max_index:
-			count += 1
-		if j > max_index:
-			count += 1
-
-	print("{} oobs".format(count))
 
 # Returns the map used to find a node index given a 
 # key made from the FIPS value of a county, and a 
@@ -138,64 +117,56 @@ def getCountyDF(label):
 # The created files are all meant to be simple text files, hoping
 # to skirt any system specific errors, while making it easy to 
 # recreate specific data objects quickly. 
-
-
 def generateFullDataset(start, end, window_size, train_split, dir_label, target_type='both'):
-	days = getDateRange(start, end)
+	days = U.getDateRange(start, end)
 	fips_values       = generateFIPSList()
 	fdi_map, ifd_list = generateFIPSDateMaps(fips_values, days)
 
 	fdi_save_fn = FD_MAP_FN.format(dir_label)
-	writeMapToCSV(fdi_save_fn, fdi_map, ['fdkey', 'node_id'])
+	U.writeMapToCSV(fdi_save_fn, fdi_map, ['fdkey', 'node_id'])
 	print("fipsdate -> node index map saved to {}".format(fdi_save_fn))
 
 	target_list, prior_list = generateTargetList(days, fdi_map, data=target_type)	
 	print("{} entries in target_list".format(len(target_list)))
 	y_fn = Y_FN.format(dir_label)
-	writeListToCSV(y_fn, target_list)
+	U.writeListToCSV(y_fn, target_list)
 	print("Y targets saved to {}".format(y_fn))
 	y_prior_fn = Y_P_FN.format(dir_label)
-	writeListToCSV(y_prior_fn, prior_list)
+	U.writeListToCSV(y_prior_fn, prior_list)
 	print("Y priors saved to {}".format(y_prior_fn))
 
 	features = generateFullFeatures(fdi_map, days, window_size, target_list)
 	# mob_features = generateMobilityFeatures(fdi_map)
 	print("{} entries in features list".format(len(features)))
 	x_fn = X_FN.format(dir_label)
-	writeListToCSV(x_fn, features)
+	U.writeListToCSV(x_fn, features)
 	print("X features saved to {}".format(x_fn))
 
 	coo_list = generateCOOList(days, fdi_map, fips_values, window_size)
 	print("{} edges in coo list".format(len(coo_list)))
 	coo_fn = COO_FN.format(dir_label)
-	writeListToCSV(coo_fn, coo_list)
+	U.writeListToCSV(coo_fn, coo_list)
 	print("COO Edge List saved to {}".format(coo_fn))
 
 	train_m, test_m = generateTrainTestMasks(days, train_split, fdi_map, fips_values)
 	print("{} entries in train/test masks".format(len(train_m)))
 	train_fn = TRAIN_M_FN.format(dir_label)
-	writeListToCSV(train_fn, train_m)
+	U.writeListToCSV(train_fn, train_m)
 	test_fn  = TEST_M_FN.format(dir_label)
-	writeListToCSV(test_fn, test_m)
+	U.writeListToCSV(test_fn, test_m)
 	print("train and test masks saved")
 
 	subid2idx, idx2subid = generateSubIdMaps(days)
 	print("generated subreddit maps, {} subreddits in dataset".format(len(subid2idx)))
 	submap_fn = SUB_MAP_FN.format(dir_label)
-	writeMapToCSV(submap_fn, subid2idx, ['sub_reddit_id', 'sub_idx'])
+	U.writeMapToCSV(submap_fn, subid2idx, ['sub_reddit_id', 'sub_idx'])
 	print("saved subreddit map to {}".format(submap_fn))
 
 	activity_edges = generateActivityData(days, subid2idx, fdi_map)
 	print("generated activity edges, {} total".format(len(activity_edges)))
 	ract_fn = RACT_D_FN.format(dir_label)
-	writeListToCSV(ract_fn, activity_edges)
+	U.writeListToCSV(ract_fn, activity_edges)
 	print("activity edges saved to {}".format(ract_fn))
-
-
-def getDateRange(start, end):
-	START_DATE  = pd.to_datetime(start)
-	END_DATE    = pd.to_datetime(end)
-	return pd.date_range(start=START_DATE, end=END_DATE, freq='D')
 
 
 def generateFIPSList():
@@ -225,19 +196,7 @@ def generateFIPSDateMaps(fips_list, date_range):
 
 
 def generateFullFeatures(fdi_map, date_range, horizon, targets):
-	print('targets:')
-	# print(targets)
-
 	a_day = pd.Timedelta(value=1, unit='D')
-
-	# We need to iterate over the fips/date range, and then do two 
-	# things. First, append the static feautres for that fips to a 
-	# new raw_row. Then, find the temporal windows by looking into
-	# the targets 
-
-	# Maybe we do the targets FIRST, so we can pass them in to
-	# this method. Then we can just calculate new fipsdate keys 
-	# and insert as needed. 
 	static_df = pd.read_csv(STATIC_FEATURES_FN, dtype={'fips': 'str'})
 	NUM_FEATURES = len(static_df.columns)-1+horizon	
 
@@ -386,9 +345,6 @@ def generateCOOList(date_range, fdi_map, fips_list, hist_window_size):
 
 
 def generateTargetList(date_range, fdi_map, data='confirmed'):
-	# To stay simple, just gonna assume i'll only
-	# call on confirmed. will fix later. 
-
 	y_raw = [0 for i in range(len(fdi_map))]
 	y_prior_raw = [0 for i in range(len(fdi_map))]
 	conf_df = pd.read_csv(Y_CONF_FN, dtype={'fips': 'str'})
@@ -498,27 +454,3 @@ def generateActivityData(date_range, subid2idx, fdi_map):
 
 	return raw_data
 
-
-def writeMapToCSV(fn, src_map, headers):
-	# First we handle the creation/existence of the label dir.
-	pathlib.Path(fn).parent.mkdir(exist_ok=True)
-
-	# doing this manually bc i cant get pandas to do it right?
-	# i mean its def me but lets just say its the panda.
-	with open(fn, 'w') as f:
-		f.write("{}\n".format(",".join(headers)))
-		for key in src_map:
-			val = src_map[key]
-			f.write("{}, {}\n".format(key, val))
-
-
-def writeListToCSV(fn, src_list):
-	pathlib.Path(fn).parent.mkdir(exist_ok=True)
-
-	save_df = pd.DataFrame(src_list)
-	save_df.to_csv(fn, header=False, index=False)
-	
-	# with open(fn, 'w') as f:
-	# 	for l in src_list:
-	# 		f.write("{}\n".format(l))
-			

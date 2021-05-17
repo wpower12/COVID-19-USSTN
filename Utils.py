@@ -3,6 +3,13 @@ import torch
 import math
 import pathlib
 
+
+def getDateRange(start, end):
+	START_DATE  = pd.to_datetime(start)
+	END_DATE    = pd.to_datetime(end)
+	return pd.date_range(start=START_DATE, end=END_DATE, freq='D')
+
+
 def generateRandomSparseTensor(shape, density, max_value):
 	num_items = math.floor(shape[0]*shape[1]*density)
 	i, j, v = [], [], []
@@ -13,6 +20,24 @@ def generateRandomSparseTensor(shape, density, max_value):
 		v.append(random.randint(0, max_value))
 	return torch.sparse_coo_tensor([i, j], v, shape, dtype=torch.float)
 
+
+def writeMapToCSV(fn, src_map, headers):
+	pathlib.Path(fn).parent.mkdir(exist_ok=True)
+
+	# doing this manually bc i cant get pandas to do it right?
+	# i mean its def me but lets just say its the panda.
+	with open(fn, 'w') as f:
+		f.write("{}\n".format(",".join(headers)))
+		for key in src_map:
+			val = src_map[key]
+			f.write("{}, {}\n".format(key, val))
+
+
+def writeListToCSV(fn, src_list):
+	pathlib.Path(fn).parent.mkdir(exist_ok=True)
+	save_df = pd.DataFrame(src_list)
+	save_df.to_csv(fn, header=False, index=False)
+	
 
 class Logger:
 	def __init__(self, file_name):
