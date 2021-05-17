@@ -91,7 +91,7 @@ print("saving results to: {}".format(ts_log_fn))
 ts_log = Utils.Logger(ts_log_fn)
 
 ts_optimizer = torch.optim.Adam(ts_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-ts_criterion = torch.nn.RMSLELoss(reduction='mean')
+ts_criterion = RMSLELoss(reduction='mean')
 
 def ts_train():
 	ts_model.train()
