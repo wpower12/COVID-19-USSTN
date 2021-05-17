@@ -9,10 +9,10 @@ from torch_geometric.nn import GCNConv
 
 DS_LABEL = 'w7_copy'
 RES_DIR  = "results/{}".format(DS_LABEL)
-NUM_EPOCHS = 1000
+NUM_EPOCHS = 10000
 LEARNING_RATE = 1e-5
 WEIGHT_DECAY  = 5e-4
-REPORT_EVERY = 5
+REPORT_EVERY = 50
 OUT_DIM = 1
 NODE_FEATURES = 42
 SUB_REP_DIM = 3
@@ -149,10 +149,11 @@ class RedditSkip(torch.nn.Module):
 		self.AggSubs   = AggregateSubreddits(reddit_activity)
 		
 		# I think? these are values similar to what the paper uses.
-		self.MLP_embed = MLP(32, NODE_FEATURES+SUB_REP_DIM, 16)
-		self.GCN1      = GCNConv(16, 16)
-		self.GCN2      = GCNConv(16, 16)
-		self.MLP_pred  = MLP(8, 16, OUT_DIM)
+
+		self.MLP_embed = MLP(64, NODE_FEATURES+SUB_REP_DIM, 32)
+		self.GCN1      = GCNConv(32, 32)
+		self.GCN2      = GCNConv(32, 32)
+		self.MLP_pred  = MLP(32, 32, OUT_DIM)
 
 	def forward(self, x, edge_index, priors):
 
@@ -162,6 +163,7 @@ class RedditSkip(torch.nn.Module):
 		# the other model. 
 		h = self.AggSubs(x)
 		h = self.MLP_embed(h) # We use the Embedding MLP as our 'update'
+		h = F.dropout(h, p=0.5, training=self.training)
 
 		# First Hop
 		h = self.GCN1(h, edge_index)
@@ -189,7 +191,8 @@ print("saving results to: {}".format(rs_log_fn))
 rs_log = Utils.Logger(rs_log_fn)
 
 rs_optimizer = torch.optim.Adam(rs_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-rs_criterion = torch.nn.MSELoss(reduction='mean')
+# rs_criterion = torch.nn.MSELoss(reduction='mean')
+rs_criterion = RMSLELoss(reduction='mean')
 
 def rs_train():
 	rs_model.train()
