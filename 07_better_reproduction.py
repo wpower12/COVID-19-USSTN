@@ -13,6 +13,7 @@ NUM_EPOCHS = 1000000
 LEARNING_RATE = 1e-5
 WEIGHT_DECAY  = 5e-4
 REPORT_EVERY = 500
+LOSS_BUFF_SIZE = 100
 OUT_DIM = 1
 NODE_FEATURES = 42
 SUB_REP_DIM = 3
@@ -108,11 +109,17 @@ def ts_test():
 	loss = ts_criterion(out[graph.test_mask].to(device), graph.y[graph.test_mask].to(device))
 	return loss
 
+loss_buffer = []
 for epoch in range(1, NUM_EPOCHS):
 	loss = ts_train()
-	ts_log.addValue(loss)
 	if epoch % REPORT_EVERY == 0:
 		print("ts - epoch {:0>} - {}".format(epoch, loss))
+
+	loss_buffer.append(loss)
+	if len(loss_buffer) > LOSS_BUFF_SIZE:
+		ts_log.addValues(loss_buffer)
+		loss_buffer = []
+
 
 test_acc = ts_test()
 print("ts - final test loss: {}".format(test_acc))
@@ -210,11 +217,18 @@ def rs_test():
 	return loss
 
 print("rs - training for {} epochs".format(NUM_EPOCHS))
+loss_buffer = []
 for epoch in range(1, NUM_EPOCHS):
 	loss = rs_train()
 	rs_log.addValue(loss)
+
 	if epoch % REPORT_EVERY == 0:
 		print("rs - epoch {} - {}".format(epoch, loss))
+
+	loss_buffer.append(loss)
+	if len(loss_buffer) > LOSS_BUFF_SIZE:
+		rs_log.addValues(loss_buffer)
+		loss_buffer = []
 
 test_acc = rs_test()
 print("final test loss: {}".format(test_acc))

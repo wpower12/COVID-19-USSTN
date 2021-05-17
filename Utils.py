@@ -48,3 +48,7 @@ class Logger:
 		with open(self.fn, 'a') as f:
 			f.write("{}\n".format(v))
 
+	def addValues(self, vs):
+		with open(self.fn, 'a') as f:
+			for v in vs:
+				f.write("{}\n".format(v))
