@@ -17,6 +17,10 @@ REPORT_EVERY = 5
 OUT_DIM = 1
 NODE_FEATURES = 42
 SUB_REP_DIM = 3
+CUDA_CORE = 0
+
+dev_str = "cuda:{}".format(CUDA_CORE)
+device = torch.device(dev_str if torch.cuda.is_available() else "cpu")
 
 print("Using dataset: {}".format(DS_LABEL))
 graph = Data.getPyTorchGeoData(DS_LABEL)
@@ -70,6 +74,8 @@ class TemporalSkip(torch.nn.Module):
 
 print("Temporal Skip Model:")
 ts_model = TemporalSkip()
+ts_mode.to(device)
+
 print(ts_model)
 ts_log_fn = "{}/{}".format(RES_DIR, "ts_loss_per_epoch.txt")
 print("saving results to: {}".format(ts_log_fn))
@@ -81,7 +87,7 @@ ts_criterion = torch.nn.MSELoss(reduction='mean')
 def ts_train():
 	ts_model.train()
 	ts_optimizer.zero_grad()
-	out  = ts_model(graph.x, graph.edge_index, graph.priors)
+	out  = ts_model(graph.x.to(device), graph.edge_index.to(device), graph.priors.to(device))
 	loss = ts_criterion(out[graph.train_mask], graph.y[graph.train_mask])
 	loss.backward()
 	ts_optimizer.step()
@@ -89,8 +95,8 @@ def ts_train():
 
 def ts_test():
 	ts_model.eval()
-	out  = ts_model(graph.x, graph.edge_index, graph.priors)
-	loss = ts_criterion(out[graph.test_mask], graph.y[graph.test_mask])
+	out  = ts_model(graph.x.to(device), graph.edge_index.to(device), graph.priors.to(device))
+	loss = ts_criterion(out[graph.test_mask].to(device), graph.y[graph.test_mask].to(device))
 	return loss
 
 for epoch in range(1, NUM_EPOCHS):
@@ -165,7 +171,9 @@ class RedditSkip(torch.nn.Module):
 
 
 print("Reddit Aggregation Model")
-rs_model = RedditSkip(activity_data)
+rs_model = RedditSkip(activity_data.to(device))
+rs_model.to(device)
+
 print(rs_model)
 rs_log_fn = "{}/{}".format(RES_DIR, "rs_loss_per_epoch.txt")
 print("saving results to: {}".format(rs_log_fn))
@@ -177,15 +185,15 @@ rs_criterion = torch.nn.MSELoss(reduction='mean')
 def rs_train():
 	rs_model.train()
 	rs_optimizer.zero_grad()
-	out = rs_model(graph.x, graph.edge_index, graph.priors)
-	loss = rs_criterion(out[graph.train_mask], graph.y[graph.train_mask])
+	out = rs_model(graph.x.to(device), graph.edge_index.to(device), graph.priors.to(device))
+	loss = rs_criterion(out[graph.train_mask].to(device), graph.y[graph.train_mask].to(device))
 	loss.backward()
 	rs_optimizer.step()
 	return loss
 
 def rs_test():
 	rs_model.eval()
-	out  = rs_model(graph.x, graph.edge_index, graph.priors)
+	out  = rs_model(graph.x.to(device), graph.edge_index.to(device), graph.priors.to(device))
 	loss = rs_criterion(out[graph.test_mask], graph.y[graph.test_mask])
 	return loss
 
