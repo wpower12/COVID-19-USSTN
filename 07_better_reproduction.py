@@ -74,8 +74,8 @@ class TemporalSkip(torch.nn.Module):
 
 class RMSLELoss(torch.nn.Module):
     def __init__(self):
-        super().__init__()
-        self.mse = torch.nn.MSELoss()
+        super().__init__(reduction='mean')
+        self.mse = torch.nn.MSELoss(reduction=reduction)
         
     def forward(self, pred, actual):
         return torch.sqrt(self.mse(torch.log(pred + 1), torch.log(actual + 1)))
