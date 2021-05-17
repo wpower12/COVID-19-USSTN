@@ -7,11 +7,11 @@ import torch.nn.functional as F
 from torch.nn import Linear
 from torch_geometric.nn import GCNConv 
 
-DS_LABEL = 'w7_200_64_full'
+DS_LABEL = 'w7_copy'
 RES_DIR  = "results/{}".format(DS_LABEL)
 NUM_EPOCHS = 1000
-LEARNING_RATE = 0.001
-WEIGHT_DECAY  = 1e-5
+LEARNING_RATE = 1e-5
+WEIGHT_DECAY  = 5e-4
 REPORT_EVERY = 5
 OUT_DIM = 1
 NODE_FEATURES = 42
@@ -55,6 +55,7 @@ class TemporalSkip(torch.nn.Module):
 	def forward(self, x, edge_index, priors):
 		# Initial Embedding
 		h = self.MLP_embed(x)
+		h = F.dropout(h, p=0.5, training=self.training)
 
 		# First Hop
 		h = self.GCN1(h, edge_index)
@@ -71,6 +72,15 @@ class TemporalSkip(torch.nn.Module):
 		return out
 
 
+class RMSLELoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mse = nn.MSELoss()
+        
+    def forward(self, pred, actual):
+        return torch.sqrt(self.mse(torch.log(pred + 1), torch.log(actual + 1)))
+
+
 print("Temporal Skip Model:")
 ts_model = TemporalSkip()
 ts_model.to(device)
@@ -81,7 +91,7 @@ print("saving results to: {}".format(ts_log_fn))
 ts_log = Utils.Logger(ts_log_fn)
 
 ts_optimizer = torch.optim.Adam(ts_model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
-ts_criterion = torch.nn.MSELoss(reduction='mean')
+ts_criterion = torch.nn.RMSLELoss(reduction='mean')
 
 def ts_train():
 	ts_model.train()
