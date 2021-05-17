@@ -73,7 +73,7 @@ class TemporalSkip(torch.nn.Module):
 
 print("Temporal Skip Model:")
 ts_model = TemporalSkip()
-ts_mode.to(device)
+ts_model.to(device)
 
 print(ts_model)
 ts_log_fn = "{}/{}".format(RES_DIR, "ts_loss_per_epoch.txt")
