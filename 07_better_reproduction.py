@@ -47,10 +47,10 @@ class TemporalSkip(torch.nn.Module):
 		super(TemporalSkip, self).__init__()
 
 		# I ?think? these are values similar to what the paper uses.
-		self.MLP_embed = MLP(32, NODE_FEATURES, 64)
-		self.GCN1      = GCNConv(64, 32)
+		self.MLP_embed = MLP(64, NODE_FEATURES, 32)
+		self.GCN1      = GCNConv(32, 32)
 		self.GCN2      = GCNConv(32, 32)
-		self.MLP_pred  = MLP(16, 32, OUT_DIM)
+		self.MLP_pred  = MLP(32, 32, OUT_DIM)
 		
 	def forward(self, x, edge_index, priors):
 		# Initial Embedding
