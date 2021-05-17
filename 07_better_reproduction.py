@@ -87,7 +87,7 @@ def ts_train():
 	ts_model.train()
 	ts_optimizer.zero_grad()
 	out  = ts_model(graph.x.to(device), graph.edge_index.to(device), graph.priors.to(device))
-	loss = ts_criterion(out[graph.train_mask], graph.y[graph.train_mask])
+	loss = ts_criterion(out[graph.train_mask].to(device), graph.y[graph.train_mask].to(device))
 	loss.backward()
 	ts_optimizer.step()
 	return loss
@@ -193,7 +193,7 @@ def rs_train():
 def rs_test():
 	rs_model.eval()
 	out  = rs_model(graph.x.to(device), graph.edge_index.to(device), graph.priors.to(device))
-	loss = rs_criterion(out[graph.test_mask], graph.y[graph.test_mask])
+	loss = rs_criterion(out[graph.test_mask].to(device), graph.y[graph.test_mask].to(device))
 	return loss
 
 print("rs - training for {} epochs".format(NUM_EPOCHS))
