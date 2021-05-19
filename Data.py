@@ -136,10 +136,12 @@ def generateFullDataset(start, end, window_size, train_split, dir_label, target_
 	print("Y priors saved to {}".format(y_prior_fn))
 
 	features = generateFullFeatures(fdi_map, days, window_size, target_list)
-	# mob_features = generateMobilityFeatures(fdi_map)
-	print("{} entries in features list".format(len(features)))
+	mob_features = generateMobilityFeatures(fdi_map)
+	combined_features = combineFeatures(features, mob_features)
+
+	print("{} entries in features list".format(len(combined_features)))
 	x_fn = X_FN.format(dir_label)
-	U.writeListToCSV(x_fn, features)
+	U.writeListToCSV(x_fn, combined_features)
 	print("X features saved to {}".format(x_fn))
 
 	coo_list = generateCOOList(days, fdi_map, fips_values, window_size)
@@ -280,6 +282,10 @@ def generateMobilityFeatures(fdi_map):
 				x[idx] = data
 				rows_touched += 1
 	return x
+
+
+def combineFeatures(a, b):
+	return [a[i]+b[i] for i in range(len(a))]
 
 
 def generateCOOList(date_range, fdi_map, fips_list, hist_window_size):
