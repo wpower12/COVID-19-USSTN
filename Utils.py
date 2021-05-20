@@ -1,6 +1,7 @@
 import random
 import torch
 import math
+import pandas as pd
 import pathlib
 
 
@@ -52,3 +53,14 @@ class Logger:
 		with open(self.fn, 'a') as f:
 			for v in vs:
 				f.write("{}\n".format(v))
+
+
+class RMSLELoss(torch.nn.Module):
+    def __init__(self, reduction='mean'):
+        super().__init__()
+        self.mse = torch.nn.MSELoss(reduction=reduction)
+        
+    def forward(self, pred, actual):
+        return torch.sqrt(self.mse(torch.log(pred + 1), torch.log(actual + 1)))
+
+
