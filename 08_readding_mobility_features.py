@@ -9,8 +9,8 @@ import torch.nn.functional as F
 from torch.nn import Linear
 from torch_geometric.nn import GCNConv 
 
-DS_LABEL = 'w7_readded_mob'
-RES_LABEL = 'w7_readded_mob'
+DS_LABEL = 'w7_wDeltas'
+RES_LABEL = 'w7_wDeltas_00'
 
 RES_DIR  = "results/{}".format(RES_LABEL)
 CHECKPOINT_FN = "{}/{}".format(RES_DIR, "checkpoint.pt")
