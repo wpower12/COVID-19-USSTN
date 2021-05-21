@@ -33,6 +33,7 @@ print(graph)
 
 model = Models.SkinnySkip(NODE_FEATURES, HEIGHT, WIDTH, OUT_DIM)
 print(model)
+model.to(device)
 
 log_fn = "{}/{}".format(RES_DIR, "loss_per_epoch.txt")
 log = Utils.Logger(log_fn)

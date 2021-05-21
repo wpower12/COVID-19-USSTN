@@ -181,6 +181,15 @@ def generateFIPSList():
 	return u_fips
 
 
+def generateFipsMaps():
+	fip_2_idx = dict()
+	idx_2_fip = []
+	for i, fips in enumerate(generateFIPSList()):
+		fip_2_idx[fips] = i
+		idx_2_fip.append(fips)
+	return fip_2_idx, idx_2_fip
+
+
 def generateFIPSDateMaps(fips_list, date_range):
 	fdi_dict = dict() # The FIPS-Date -> idx Dictionary (fdi)
 	ifd_list = []     # Index for dict, so idx -> FIPS-Date Key
@@ -200,10 +209,12 @@ def generateFIPSDateMaps(fips_list, date_range):
 def generateFullFeatures(fdi_map, date_range, horizon, targets):
 	a_day = pd.Timedelta(value=1, unit='D')
 	static_df = pd.read_csv(STATIC_FEATURES_FN, dtype={'fips': 'str'})
+	
 	NUM_FEATURES = len(static_df.columns)-1+horizon	
 
 	# Initial empty feature 'tensor'
 	raw_features = [[0 for i in range(NUM_FEATURES)] for cd in range(len(fdi_map))]
+	
 	fips_list = generateFIPSList()
 	for fips in fips_list:
 		static_features = static_df[static_df['fips'] == fips]
@@ -284,6 +295,89 @@ def generateMobilityFeatures(fdi_map):
 	return x
 
 
+
+def generateFullSequences(date_range, fip_2_idx):
+	# Getting dataframes we need. 
+	static_df = pd.read_csv(STATIC_FEATURES_FN, dtype={'fips': 'str'})
+
+	# for targets
+	conf_df = pd.read_csv(Y_CONF_FN, dtype={'fips': 'str'})
+
+	target_cols = ["census_fips_code",
+		"date",
+		"retail_and_recreation_percent_change_from_baseline",
+		"grocery_and_pharmacy_percent_change_from_baseline",
+		"parks_percent_change_from_baseline",
+		"transit_stations_percent_change_from_baseline",
+		"workplaces_percent_change_from_baseline",
+		"residential_percent_change_from_baseline"]
+
+	DTYPES = {'census_fips_code': 'str',
+		"date": 'str'}	
+	mobility_df = pd.read_csv(MOBILITY_FN, dtype=DTYPES)
+	mobility_df = mobility_df[target_cols]
+	m_df = mobility_df[mobility_df['census_fips_code'].notna()].copy()
+	m_df.fillna(0, inplace=True)
+
+	# static features, mobility features. 
+	NUM_FEATURES = 6+len(static_df.columns)-1
+	NUM_COUNTIES = len(fip_2_idx)
+	SEQ_LEN      = len(date_range)
+
+	full_county_seqs = torch.zeros((NUM_COUNTIES, SEQ_LEN, NUM_FEATURES))
+	full_target_seqs = torch.zeros((NUM_COUNTIES, SEQ_LEN, 1))
+
+	n_non_zero = 0
+	# TODO - Will need to pass in the fips list eeventually.
+	# if we want to do the targets in a different method.
+	# otherwise we wont be gaurenteed the same ordering. 
+	for fips in fip_2_idx:
+		f_idx = fip_2_idx[fips]
+		static_features = static_df[static_df['fips'] == fips]		
+		if len(static_features) == 0:
+			continue
+		
+		static_features = list(static_features.values[0][1:35])
+		mob_features = m_df[m_df['census_fips_code'] == fips]
+		fips_targets = conf_df[conf_df['fips'] == fips][0]
+
+		for d, day in enumerate(date_range):
+
+			daily_mob_features = mob_features[mob_features['date'] == "{}".format(day.date())]
+
+			if len(daily_mob_features) == 0:
+				continue
+
+			m_raw = daily_mob_features.values[0]
+			daily_data = [m_raw[i+2]/100.0 for i in range(6)]
+			# At this point, we have our fips_idx, and day_idx
+			# and a 'not empty' set of mobility features, along with
+			# the static features. So we can now iterate over
+			# those in a consistent way, and fill in the 'full' tensor
+			# with actual sequences. 
+
+			for i, s in enumerate(static_features):
+				full_county_seqs[f_idx, d, i] = s
+
+			for i, m in enumerate(daily_data):
+				full_county_seqs[f_idx, d, i+len(static_features)] = m
+
+			daily_target = fips_targets["{}".format(day.date)]
+			full_target_seqs[f_idx, d] = daily_target
+
+			n_non_zero += 1
+
+	print("filled in {} of {} county/day feature tensors.".format(n_non_zero, NUM_COUNTIES*SEQ_LEN))
+
+	return full_county_seqs, full_target_seqs
+
+
+def generateFullTargets(fips_list, date_range):
+	conf_df = pd.read_csv(Y_CONF_FN, dtype={'fips': 'str'})
+
+	pass
+
+
 def combineFeatures(a, b):
 	return [a[i]+b[i] for i in range(len(a))]
 
@@ -353,13 +447,15 @@ def generateCOOList(date_range, fdi_map, fips_list, hist_window_size):
 def generateTargetList(date_range, fdi_map, data='confirmed'):
 	y_raw = [0 for i in range(len(fdi_map))]
 	y_prior_raw = [0 for i in range(len(fdi_map))]
-	conf_df = pd.read_csv(Y_CONF_FN, dtype={'fips': 'str'})
+
+	conf_df = pd.read_csv(DY_CONF_FN, dtype={'fips': 'str'})
 	ke_count = 0
 	a_day = pd.Timedelta(value=1, unit='D')
 
 	for row in conf_df.iterrows():
 		record = row[1]
 		fips = record['fips']
+
 		for d in date_range:
 			key_str = "{}".format(d.date())
 			

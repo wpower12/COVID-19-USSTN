@@ -9,13 +9,12 @@ import torch.nn.functional as F
 from torch.nn import Linear
 from torch_geometric.nn import GCNConv 
 
-START_DATE  = "04/12/2020"
-END_DATE    = "12/31/2020"
-TRAIN_SPLIT_IDX  = 200 # Leaves 64 to test
-WINDOW_SIZE = 7 
 DS_LABEL = 'w7_readded_mob'
-RES_DIR  = "results/{}".format(DS_LABEL)
+RES_LABEL = 'w7_readded_mob'
+
+RES_DIR  = "results/{}".format(RES_LABEL)
 CHECKPOINT_FN = "{}/{}".format(RES_DIR, "checkpoint.pt")
+
 NUM_EPOCHS = 1000000
 LEARNING_RATE = 1e-5
 WEIGHT_DECAY  = 5e-4
