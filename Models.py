@@ -58,6 +58,35 @@ class TemporalSkip(torch.nn.Module):
 		return out
 
 
+class SkinnySkip(torch.nn.Module):
+	def __init__(self, num_node_features, inner_height, inner_dim, output_dim):
+		super(SkinnySkip, self).__init__()
+
+		# I ?think? these are values similar to what the paper uses.
+		self.MLP_embed = MLP(32, num_node_features, inner_dim)
+
+		convs = [GCNConv(inner_dim, inner_dim) for i in range(inner_height)]
+		self.GCNs = torch.nn.ModuleList(convs)
+
+		self.MLP_pred  = MLP(32, inner_dim, output_dim)
+		
+	def forward(self, x, edge_index, priors):
+		# Initial Embedding
+		h = self.MLP_embed(x)
+		h = F.dropout(h, p=0.5, training=self.training)
+
+		# Graph Convolutions.
+		for i, gcn in enumerate(self.GCNs):
+			h = gcn(h, edge_index)
+			h = F.dropout(h, p=0.5, training=self.training)
+			h = h.relu()
+
+		# Prediction layer
+		out = self.MLP_pred(h)
+		out = torch.add(out, priors)
+		return out
+
+
 class AggregateSubreddits(torch.nn.Module):
 	def __init__(self, activity, sub_rep_dim):
 		super(AggregateSubreddits, self).__init__()
